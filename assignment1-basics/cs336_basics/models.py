@@ -1,9 +1,8 @@
 import torch
 
 from torch import nn, Tensor
-from einops import rearrange, einsum, reduce
+from einops import einsum, reduce, repeat
 from jaxtyping import Float, Int
-
 
 class Linear(nn.Module):
     def __init__(self, in_features: int, out_features: int, device: torch.device | None = None, dtype: torch.dtype | None = None):
@@ -82,3 +81,41 @@ class SwiGLU(nn.Module):
         gated = gate * up_proj
         down_proj = self.w2(gated)
         return down_proj
+
+class RotaryPositionalEmbedding(nn.Module):
+    def __init__(self, theta: float, d_k: int, max_seq_len: int, device: torch.device | None = None):
+        super(RotaryPositionalEmbedding, self).__init__()
+        self.theta = theta
+        self.d_k = d_k
+        self.max_seq_len = max_seq_len
+        self.device = device
+        
+        inv_freq = self._precompute_inv_freq(theta, d_k).to(device)
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
+        
+    def _precompute_inv_freq(self, theta: float, d_k: int):
+        pow_series = torch.arange(0, d_k, 2).float()
+        inv_freq = 1.0 / (theta ** (pow_series / d_k))
+        return inv_freq
+
+    def forward(self, x: Float[Tensor, '... seq_len d_k'], 
+                token_positions: Int[Tensor, '... seq_len']) -> Float[Tensor, '... seq_len d_k']:
+        x_even = x[..., 0::2]  # shape: (..., seq_len, d_k/2)
+        x_odd = x[..., 1::2]   # shape: (..., seq_len, d_k/2)
+        
+        # token_positions: (..., seq_len)
+        # inv_freq: (d_k/2,)
+        # angles: (..., seq_len, d_k/2)
+        angles = token_positions.unsqueeze(-1).float() * self.inv_freq
+        
+        cos = angles.cos()
+        sin = angles.sin()
+        
+        x_out_even = x_even * cos - x_odd * sin
+        x_out_odd = x_even * sin + x_odd * cos
+        
+        x_out = torch.empty_like(x)
+        x_out[..., 0::2] = x_out_even
+        x_out[..., 1::2] = x_out_odd
+        
+        return x_out
