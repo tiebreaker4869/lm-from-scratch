@@ -1,8 +1,8 @@
 import torch
 
 from torch import nn, Tensor
-from einops import einsum, reduce, repeat
-from jaxtyping import Float, Int
+from einops import einsum, reduce, rearrange
+from jaxtyping import Float, Int, Bool
 
 class Linear(nn.Module):
     def __init__(self, in_features: int, out_features: int, device: torch.device | None = None, dtype: torch.dtype | None = None):
@@ -126,3 +126,15 @@ def softmax(x: Float[Tensor, '...'], dim: int = -1) -> Float[Tensor, '...']:
     x = torch.exp(x)
     out = x / torch.sum(x, dim=dim, keepdim=True)
     return out
+
+def scaled_dot_product_attention(q: Float[Tensor, 'batch_size ... q_seq_len d_k'], k: Float[Tensor, 'batch_size ... kv_seq_len d_k'], v: Float[Tensor, 'batch_size ... kv_seq_len d_v'], mask: Bool[Tensor, 'q_seq_len kv_seq_len'] | None = None) -> Float[Tensor, 'batch_size ... q_seq_len d_v']:
+    d_k = q.shape[-1]
+    scores = einsum(q, k, 'bs ... q_seq_len d_k, bs ... kv_seq_len d_k -> bs ... q_seq_len kv_seq_len') / (d_k ** 0.5)
+    if mask is not None:
+        while mask.ndim < scores.ndim:
+            mask = mask.unsqueeze(0)
+        scores = scores.masked_fill(~mask, float('-inf'))
+    probs = softmax(scores, dim=-1)
+    out = einsum(probs, v, 'bs ... q_seq_len kv_seq_len, bs ... kv_seq_len d_v -> bs ... q_seq_len d_v')
+    return out
+    
