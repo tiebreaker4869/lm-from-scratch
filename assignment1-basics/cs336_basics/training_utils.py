@@ -1,8 +1,12 @@
-from jaxtyping import Float, Int
+from jaxtyping import Float, Int, Int64
 from torch import Tensor
 import torch
 import math
 from typing import Iterable
+import numpy.typing as npt
+import numpy as np
+
+default_rng = np.random.default_rng()
 
 def cross_entropy(logits: Float[Tensor, '... vocab_size'], 
                   targets: Int[Tensor, '...']) -> Float[Tensor, ""]:
@@ -34,3 +38,9 @@ def gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: flo
     norm = torch.linalg.norm(grad, ord=2)
     for param in params_with_grad:
         param.grad = param.grad * (max_l2_norm / (norm + eps))
+        
+def get_next_batch(dataset: npt.NDArray, batch_size: int, context_length: int, device: str, rng = default_rng) -> tuple[Int64[Tensor, 'bs seq_len'], Int64[Tensor, 'bs seq_len']]:
+   sampled_start = rng.choice(len(dataset) - context_length, batch_size)
+   sequences = torch.tensor([dataset[start:start+context_length] for start in sampled_start], dtype=torch.long, device=device)
+   targets = torch.tensor([dataset[start+1:start+1+context_length] for start in sampled_start], dtype=torch.long, device=device)
+   return (sequences, targets)
