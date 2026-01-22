@@ -2,6 +2,7 @@ from jaxtyping import Float, Int
 from torch import Tensor
 import torch
 import math
+from typing import Iterable
 
 def cross_entropy(logits: Float[Tensor, '... vocab_size'], 
                   targets: Int[Tensor, '...']) -> Float[Tensor, ""]:
@@ -26,3 +27,10 @@ def learning_rate_schedule(t: int, alpha_max: float, alpha_min: float, T_w: int,
     if t > T_c:
         return alpha_min
     return alpha_min + 0.5 * (1 + math.cos(math.pi * (t - T_w) / (T_c - T_w))) * (alpha_max - alpha_min)
+
+def gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: float, eps: float = 1e-6):
+    params_with_grad = [param for param in parameters if param.grad is not None]
+    grad = torch.concat([param.grad for param in params_with_grad])
+    norm = torch.linalg.norm(grad, ord=2)
+    for param in params_with_grad:
+        param.grad = param.grad * (max_l2_norm / (norm + eps))
