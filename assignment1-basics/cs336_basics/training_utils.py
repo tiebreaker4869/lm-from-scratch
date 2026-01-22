@@ -5,6 +5,8 @@ import math
 from typing import Iterable
 import numpy.typing as npt
 import numpy as np
+import os
+from typing import BinaryIO, IO
 
 default_rng = np.random.default_rng()
 
@@ -44,3 +46,21 @@ def get_next_batch(dataset: npt.NDArray, batch_size: int, context_length: int, d
    sequences = torch.tensor([dataset[start:start+context_length] for start in sampled_start], dtype=torch.long, device=device)
    targets = torch.tensor([dataset[start+1:start+1+context_length] for start in sampled_start], dtype=torch.long, device=device)
    return (sequences, targets)
+
+def save_checkpoint(model: torch.nn.Module, optimizer: torch.optim.Optimizer, iteration: int, out: str | os.PathLike | BinaryIO | IO[bytes]):
+    all_states = {
+        'model_weights': model.state_dict(),
+        'optimizer_states': optimizer.state_dict(),
+        'iteration': iteration
+    }
+    with open(out, 'wb') as f:
+        torch.save(all_states, f)
+    
+def load_checkpoint(src: str | os.PathLike | BinaryIO | IO[bytes], model: torch.nn.Module, optimizer: torch.optim.Optimizer) -> int:
+    iteration = -1
+    with open(src, 'rb') as f:
+        all_states = torch.load(src)
+        model.load_state_dict(all_states['model_weights'])
+        optimizer.load_state_dict(all_states['optimizer_states'])
+        iteration = all_states['iteration']
+    return iteration
