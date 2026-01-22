@@ -137,4 +137,33 @@ def scaled_dot_product_attention(q: Float[Tensor, 'batch_size ... q_seq_len d_k'
     probs = softmax(scores, dim=-1)
     out = einsum(probs, v, 'bs ... q_seq_len kv_seq_len, bs ... kv_seq_len d_v -> bs ... q_seq_len d_v')
     return out
-    
+
+class MultiHeadSelfAttention(nn.Module):
+    def __init__(self, d_model: int, num_heads: int, theta: float | None = None, max_seq_len: int | None = None, device: torch.device | None = None, dtype: torch.dtype | None = None):
+        super(MultiHeadSelfAttention, self).__init__()
+        assert d_model % num_heads == 0
+        self.d_model = d_model
+        self.max_seq_len = max_seq_len
+        self.theta = theta
+        self.w_qkv = Linear(d_model, 3 * d_model, device, dtype)
+        self.w_out = Linear(d_model, d_model, device, dtype)
+        self.device = device
+        self.dtype = dtype
+        self.num_heads = num_heads
+        head_dim = d_model // num_heads
+        self.rope = RotaryPositionalEmbedding(theta, head_dim, max_seq_len, device) if self.theta else None
+    def forward(self, x: Float[Tensor, 'bs ... seq_len d_model'], token_positions: Int[Float, 'bs ... seq_len'] | None = None) -> Float[Tensor, 'bs ... seq_len d_model']:
+        x = self.w_qkv(x)
+        q, k, v = torch.split(x, self.d_model, dim=-1)
+        q = rearrange(q, 'bs ... seq_len (num_heads d_h) -> bs ... num_heads seq_len d_h', num_heads=self.num_heads)
+        k = rearrange(k, 'bs ... seq_len (num_heads d_h) -> bs ... num_heads seq_len d_h', num_heads=self.num_heads)
+        v = rearrange(v, 'bs ... seq_len (num_heads d_h) -> bs ... num_heads seq_len d_h', num_heads=self.num_heads)
+        if self.rope and token_positions is not None:
+            q = self.rope(q, token_positions)
+            k = self.rope(k, token_positions)
+        seq_len = q.shape[-2]
+        causal_mask = torch.tril(torch.ones((seq_len, seq_len), device=self.device), diagonal=0).bool()
+        out = scaled_dot_product_attention(q, k, v, causal_mask)
+        out = rearrange(out, 'bs ... num_heads seq_len d_h -> bs ... seq_len (num_heads d_h)')
+        out = self.w_out(out)
+        return out
