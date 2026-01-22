@@ -186,3 +186,18 @@ class TransformerBlock(nn.Module):
         x = x + self.mha(self.rmsnorm_mha(x), token_positions)
         x = x + self.ffn(self.rmsnorm_ffn(x))
         return x
+
+class MiniLM(nn.Module):
+    def __init__(self, d_model: int, d_ff: int, num_heads: int, theta: float, vocab_size: int, context_length: int, num_layers: int, device: torch.device | None = None, dtype: torch.dtype | None = None):
+        super(MiniLM, self).__init__()
+        self.embeddings = Embedding(num_embeddings=vocab_size, embedding_dim=d_model, device=device, dtype=dtype)
+        self.blocks = nn.ModuleList([TransformerBlock(d_model, num_heads, d_ff, theta, max_seq_len=context_length, device=device, dtype=dtype) for _ in range(num_layers)])
+        self.final_norm = RMSNorm(d_model, device=device, dtype=dtype)
+        self.final_proj = Linear(d_model, vocab_size, device, dtype)
+    def forward(self, x: Int[Tensor, '... seq_len']) -> Float[Tensor, '... seq_len vocab_size']:
+        out = self.embeddings(x)
+        for block in self.blocks:
+            out = block(out)
+        out = self.final_norm(out)
+        out = self.final_proj(out)
+        return out

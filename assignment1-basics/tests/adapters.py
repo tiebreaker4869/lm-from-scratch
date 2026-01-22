@@ -10,7 +10,7 @@ from jaxtyping import Bool, Float, Int
 from torch import Tensor
 
 from cs336_basics.bpe_tokenizer import BPETokenizer, BPETokenizerParams, train_bpe
-from cs336_basics.models import Linear, Embedding, RMSNorm, SiLU, SwiGLU, RotaryPositionalEmbedding, softmax, scaled_dot_product_attention, MultiHeadSelfAttention, TransformerBlock
+from cs336_basics.models import Linear, Embedding, RMSNorm, SiLU, SwiGLU, RotaryPositionalEmbedding, softmax, scaled_dot_product_attention, MultiHeadSelfAttention, TransformerBlock, MiniLM
 
 
 def run_linear(
@@ -390,7 +390,24 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    miniLM = MiniLM(d_model, d_ff, num_heads, rope_theta, vocab_size, context_length, num_layers)
+    
+    miniLM.embeddings.embedding.data = weights['token_embeddings.weight']
+    
+    for i in range(num_layers):
+        miniLM.blocks[i].mha.w_qkv.w.data = torch.concat([weights[f'layers.{i}.attn.q_proj.weight'], weights[f'layers.{i}.attn.k_proj.weight'], weights[f'layers.{i}.attn.v_proj.weight']], dim=0)
+        miniLM.blocks[i].mha.w_out.w.data = weights[f'layers.{i}.attn.output_proj.weight']
+        miniLM.blocks[i].rmsnorm_mha.g.data = weights[f'layers.{i}.ln1.weight']
+        miniLM.blocks[i].rmsnorm_ffn.g.data = weights[f'layers.{i}.ln2.weight']
+        miniLM.blocks[i].ffn.w1.w.data = weights[f'layers.{i}.ffn.w1.weight']
+        miniLM.blocks[i].ffn.w2.w.data = weights[f'layers.{i}.ffn.w2.weight']
+        miniLM.blocks[i].ffn.w3.w.data = weights[f'layers.{i}.ffn.w3.weight']
+    
+    miniLM.final_norm.g.data = weights['ln_final.weight']
+    miniLM.final_proj.w.data = weights['lm_head.weight']
+    out = miniLM(in_indices)
+    return out
+        
 
 
 def run_rmsnorm(
