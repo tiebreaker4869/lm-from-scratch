@@ -10,7 +10,7 @@ from jaxtyping import Bool, Float, Int
 from torch import Tensor
 
 from cs336_basics.bpe_tokenizer import BPETokenizer, BPETokenizerParams, train_bpe
-from cs336_basics.models import Linear, Embedding, RMSNorm, SiLU, SwiGLU, RotaryPositionalEmbedding, softmax, scaled_dot_product_attention, MultiHeadSelfAttention
+from cs336_basics.models import Linear, Embedding, RMSNorm, SiLU, SwiGLU, RotaryPositionalEmbedding, softmax, scaled_dot_product_attention, MultiHeadSelfAttention, TransformerBlock
 
 
 def run_linear(
@@ -299,7 +299,16 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    tfblock = TransformerBlock(d_model, num_heads, d_ff, theta, max_seq_len)
+    tfblock.mha.w_qkv.w.data = torch.concat([weights['attn.q_proj.weight'], weights['attn.k_proj.weight'], weights['attn.v_proj.weight']], dim=0)
+    tfblock.mha.w_out.w.data = weights['attn.output_proj.weight']
+    tfblock.rmsnorm_mha.g.data = weights['ln1.weight']
+    tfblock.rmsnorm_ffn.g.data = weights['ln2.weight']
+    tfblock.ffn.w1.w.data = weights['ffn.w1.weight']
+    tfblock.ffn.w2.w.data = weights['ffn.w2.weight']
+    tfblock.ffn.w3.w.data = weights['ffn.w3.weight']
+    out = tfblock(in_features)
+    return out
 
 
 def run_transformer_lm(

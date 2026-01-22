@@ -167,3 +167,22 @@ class MultiHeadSelfAttention(nn.Module):
         out = rearrange(out, 'bs ... num_heads seq_len d_h -> bs ... seq_len (num_heads d_h)')
         out = self.w_out(out)
         return out
+    
+class TransformerBlock(nn.Module):
+    def __init__(self, d_model: int, num_heads: int, d_ff: int, theta: float | None = None, max_seq_len: int | None = None, device: torch.device | None = None, dtype: torch.dtype | None = None):
+        super(TransformerBlock, self).__init__()
+        self.rmsnorm_mha = RMSNorm(d_model, device=device, dtype=dtype)
+        self.rmsnorm_ffn = RMSNorm(d_model, device=device, dtype=dtype)
+        self.mha = MultiHeadSelfAttention(d_model, num_heads, theta, max_seq_len, device, dtype)
+        self.ffn = SwiGLU(d_model, d_ff, device, dtype)
+        self.device = device
+        self.dtype = dtype
+        self.d_model = d_model
+        self.theta = theta
+        self.max_seq_len = max_seq_len
+    def forward(self, x: Float[Tensor, 'bs ... seq_len d_model']) -> Float[Tensor, 'bs ... seq_len d_model']:
+        seq_len = x.shape[-2]
+        token_positions = torch.arange(0, seq_len, device=self.device).broadcast_to(x.shape[:-1]) if self.theta else None
+        x = x + self.mha(self.rmsnorm_mha(x), token_positions)
+        x = x + self.ffn(self.rmsnorm_ffn(x))
+        return x
