@@ -64,3 +64,11 @@ def load_checkpoint(src: str | os.PathLike | BinaryIO | IO[bytes], model: torch.
         optimizer.load_state_dict(all_states['optimizer_states'])
         iteration = all_states['iteration']
     return iteration
+
+def load_as_array(bin_path, dtype=np.uint16):
+    file_size = os.path.getsize(bin_path)
+    element_size = np.dtype(dtype).itemsize
+    total_len = file_size // element_size
+    
+    data = np.memmap(bin_path, dtype=dtype, mode='r', shape=(total_len,))
+    return data
