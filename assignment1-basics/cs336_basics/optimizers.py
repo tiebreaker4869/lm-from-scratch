@@ -34,5 +34,8 @@ class AdamW(Optimizer):
                 state["v"] = v
                 state["t"] = t
         return loss
+    def adjust_lr(self, lr: float):
+        for group in self.param_groups:
+            group["lr"] = lr
             
             
