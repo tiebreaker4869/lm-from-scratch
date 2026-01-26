@@ -28,6 +28,7 @@ def main():
     parser.add_argument('--beta2', type=float, default=0.95)
     parser.add_argument('--weight_decay', type=float, default=0.1)
     parser.add_argument('--batch_size', type=int, default=32)
+    parser.add_argument('--eval_batch_size', type=int, default=32)
     parser.add_argument('--eval_period', type=int, default=1000)
     parser.add_argument('--checkpoint_period', type=int, default=5000)
     parser.add_argument('--wandb_entity', type=str, default='lifansun1412')
@@ -72,7 +73,7 @@ def main():
 
         if step % args.eval_period == 0:
             model.eval()
-            validation_loss = eval_validation(model, validation_datasets, args.batch_size, args.context_length, args.device)
+            validation_loss = eval_validation(model, validation_datasets, args.eval_batch_size, args.context_length, args.device)
             wandb.log({"validation_loss": validation_loss}, step=step)
             model.train()
 
