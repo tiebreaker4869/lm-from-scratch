@@ -48,6 +48,22 @@ def get_next_batch(dataset: npt.NDArray, batch_size: int, context_length: int, d
    targets = torch.tensor([dataset[start+1:start+1+context_length] for start in sampled_start], dtype=torch.long, device=device)
    return (sequences, targets)
 
+def sequential_batch_iter(datasets: list[npt.NDArray], batch_size: int, context_length: int, device: str):
+    current_batch_sequences = []
+    current_batch_targets = []
+    for dataset in datasets:
+        for i in range(0, len(dataset) - context_length, context_length):
+            current_batch_sequences.append(dataset[i:i+context_length])
+            current_batch_targets.append(dataset[i+1:i+1+context_length])
+            if len(current_batch_sequences) == batch_size:
+                yield (torch.tensor(current_batch_sequences, dtype=torch.long, device=device), 
+                       torch.tensor(current_batch_targets, dtype=torch.long, device=device))
+                current_batch_sequences.clear()
+                current_batch_targets.clear()
+    if current_batch_sequences:
+        yield (torch.tensor(current_batch_sequences, dtype=torch.long, device=device), 
+               torch.tensor(current_batch_targets, dtype=torch.long, device=device))
+
 def save_checkpoint(model: torch.nn.Module, optimizer: torch.optim.Optimizer, iteration: int, out: str | os.PathLike | BinaryIO | IO[bytes]):
     all_states = {
         'model_weights': model.state_dict(),
