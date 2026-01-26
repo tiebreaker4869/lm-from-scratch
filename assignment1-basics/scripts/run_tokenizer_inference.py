@@ -3,6 +3,7 @@ from argparse import ArgumentParser
 import numpy as np
 import os
 from multiprocessing import Pool
+from tqdm import tqdm
 
 # Global tokenizer for worker processes
 _tokenizer = None
@@ -41,6 +42,10 @@ def main():
     num_workers = args.num_workers or os.cpu_count()
     dtype = np.uint16
 
+    # Count total lines for progress bar
+    with open(args.input_path, 'r') as f:
+        total_lines = sum(1 for _ in f)
+
     with Pool(
         processes=num_workers,
         initializer=_init_worker,
@@ -48,18 +53,22 @@ def main():
     ) as pool:
         with open(args.input_path, 'r') as f_in, open(args.output_path, 'wb') as f_out:
             batch = []
+            pbar = tqdm(total=total_lines, desc="Tokenizing")
             for line in f_in:
                 batch.append(line)
                 if len(batch) >= args.batch_size:
                     for tokens in pool.map(_encode_line, batch):
                         if tokens:
                             f_out.write(np.array(tokens, dtype=dtype).tobytes())
+                    pbar.update(len(batch))
                     batch = []
             # Process remaining lines
             if batch:
                 for tokens in pool.map(_encode_line, batch):
                     if tokens:
                         f_out.write(np.array(tokens, dtype=dtype).tobytes())
+                pbar.update(len(batch))
+            pbar.close()
 
 if __name__ == "__main__":
     main()
