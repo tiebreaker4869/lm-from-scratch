@@ -8,6 +8,7 @@ import numpy as np
 import os
 from typing import BinaryIO, IO
 import random
+from torch import nn
 
 default_rng = np.random.default_rng()
 
@@ -42,13 +43,13 @@ def gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: flo
     for param in params_with_grad:
         param.grad = param.grad * (max_l2_norm / (norm + eps))
         
-def get_next_batch(dataset: npt.NDArray, batch_size: int, context_length: int, device: str, rng = default_rng) -> tuple[Int64[Tensor, 'bs seq_len'], Int64[Tensor, 'bs seq_len']]:
+def get_next_batch(dataset: npt.NDArray, batch_size: int, context_length: int, device: torch.device | None, rng = default_rng) -> tuple[Int64[Tensor, 'bs seq_len'], Int64[Tensor, 'bs seq_len']]:
    sampled_start = rng.choice(len(dataset) - context_length, batch_size)
    sequences = torch.tensor([dataset[start:start+context_length] for start in sampled_start], dtype=torch.long, device=device)
    targets = torch.tensor([dataset[start+1:start+1+context_length] for start in sampled_start], dtype=torch.long, device=device)
    return (sequences, targets)
 
-def sequential_batch_iter(datasets: list[npt.NDArray], batch_size: int, context_length: int, device: str):
+def sequential_batch_iter(datasets: list[npt.NDArray], batch_size: int, context_length: int, device: torch.device | None):
     current_batch_sequences = []
     current_batch_targets = []
     for dataset in datasets:
@@ -63,6 +64,19 @@ def sequential_batch_iter(datasets: list[npt.NDArray], batch_size: int, context_
     if current_batch_sequences:
         yield (torch.tensor(current_batch_sequences, dtype=torch.long, device=device), 
                torch.tensor(current_batch_targets, dtype=torch.long, device=device))
+
+def eval_validation(model: nn.Module, datasets: list[npt.NDArray], batch_size: int, context_length: int, device: torch.device | None) -> float:
+    with torch.inference_mode():
+        total_loss = 0.0
+        total_samples = 0
+        for sequences, targets in sequential_batch_iter(datasets, batch_size, context_length, device):
+            logits = model(sequences)
+            loss = cross_entropy(logits, targets)
+            batch_samples = sequences.shape[0]
+            total_loss += loss.cpu().item() * batch_samples
+            total_samples += batch_samples
+        
+        return total_loss / total_samples
 
 def save_checkpoint(model: torch.nn.Module, optimizer: torch.optim.Optimizer, iteration: int, out: str | os.PathLike | BinaryIO | IO[bytes]):
     all_states = {
