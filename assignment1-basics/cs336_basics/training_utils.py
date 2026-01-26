@@ -7,6 +7,7 @@ import numpy.typing as npt
 import numpy as np
 import os
 from typing import BinaryIO, IO
+import random
 
 default_rng = np.random.default_rng()
 
@@ -72,3 +73,17 @@ def load_as_array(bin_path, dtype=np.uint16):
     
     data = np.memmap(bin_path, dtype=dtype, mode='r', shape=(total_len,))
     return data
+
+def sample_dataset(datasets: list[np.ndarray], probs: list[float]) -> np.ndarray:
+    sampled = random.choices(datasets, weights=probs)[0]
+    return sampled
+
+def get_dtype(dtype: str) -> torch.dtype:
+    mappings = {
+        'float32': torch.float32,
+        'bfloat16': torch.bfloat16,
+        'float16': torch.float16
+    }
+    if dtype not in mappings:
+        raise NotImplementedError
+    return mappings[dtype]
