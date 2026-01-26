@@ -40,8 +40,9 @@ def gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm: flo
     params_with_grad = [param for param in parameters if param.grad is not None]
     grad = torch.concat([param.grad for param in params_with_grad])
     norm = torch.linalg.norm(grad, ord=2)
-    for param in params_with_grad:
-        param.grad = param.grad * (max_l2_norm / (norm + eps))
+    if norm > max_l2_norm:
+        for param in params_with_grad:
+            param.grad = param.grad * (max_l2_norm / (norm + eps))
         
 def get_next_batch(dataset: npt.NDArray, batch_size: int, context_length: int, device: torch.device | None, rng = default_rng) -> tuple[Int64[Tensor, 'bs seq_len'], Int64[Tensor, 'bs seq_len']]:
    sampled_start = rng.choice(len(dataset) - context_length, batch_size)
