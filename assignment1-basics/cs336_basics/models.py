@@ -194,6 +194,7 @@ class MiniLM(nn.Module):
         self.blocks = nn.ModuleList([TransformerBlock(d_model, num_heads, d_ff, theta, max_seq_len=context_length, device=device, dtype=dtype) for _ in range(num_layers)])
         self.final_norm = RMSNorm(d_model, device=device, dtype=dtype)
         self.final_proj = Linear(d_model, vocab_size, device, dtype)
+        self.device = device
     def forward(self, x: Int[Tensor, '... seq_len']) -> Float[Tensor, '... seq_len vocab_size']:
         out = self.embeddings(x)
         for block in self.blocks:

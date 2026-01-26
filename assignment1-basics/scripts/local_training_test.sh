@@ -10,7 +10,7 @@ python scripts/run_lm_traning.py \
     --device cpu \
     --dtype float32 \
     --batch_size 4 \
-    --total_steps 100 \
+    --total_steps 1000 \
     --warmup_steps 10 \
     --eval_period 20 \
     --checkpoint_period 50 \
