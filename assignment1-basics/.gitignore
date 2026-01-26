@@ -2,7 +2,11 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+data
+tokenizer_output
+tokenized
+checkpoints
+wandb
 # C extensions
 *.so
 
