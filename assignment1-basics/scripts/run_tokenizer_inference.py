@@ -42,9 +42,7 @@ def main():
     num_workers = args.num_workers or os.cpu_count()
     dtype = np.uint16
 
-    # Count total lines for progress bar
-    with open(args.input_path, 'r') as f:
-        total_lines = sum(1 for _ in f)
+    file_size = os.path.getsize(args.input_path)
 
     with Pool(
         processes=num_workers,
@@ -52,22 +50,31 @@ def main():
         initargs=(vocab_path, merges_path, special_tokens)
     ) as pool:
         with open(args.input_path, 'r') as f_in, open(args.output_path, 'wb') as f_out:
+            pbar = tqdm(total=file_size, desc="Tokenizing", unit="B", unit_scale=True)
             batch = []
-            pbar = tqdm(total=total_lines, desc="Tokenizing")
+            batch_bytes = 0
             for line in f_in:
                 batch.append(line)
+                batch_bytes += len(line.encode('utf-8'))
                 if len(batch) >= args.batch_size:
-                    for tokens in pool.map(_encode_line, batch):
+                    all_tokens = []
+                    for tokens in pool.imap(_encode_line, batch):
                         if tokens:
-                            f_out.write(np.array(tokens, dtype=dtype).tobytes())
-                    pbar.update(len(batch))
+                            all_tokens.extend(tokens)
+                    if all_tokens:
+                        f_out.write(np.array(all_tokens, dtype=dtype).tobytes())
+                    pbar.update(batch_bytes)
                     batch = []
+                    batch_bytes = 0
             # Process remaining lines
             if batch:
-                for tokens in pool.map(_encode_line, batch):
+                all_tokens = []
+                for tokens in pool.imap(_encode_line, batch):
                     if tokens:
-                        f_out.write(np.array(tokens, dtype=dtype).tobytes())
-                pbar.update(len(batch))
+                        all_tokens.extend(tokens)
+                if all_tokens:
+                    f_out.write(np.array(all_tokens, dtype=dtype).tobytes())
+                pbar.update(batch_bytes)
             pbar.close()
 
 if __name__ == "__main__":
