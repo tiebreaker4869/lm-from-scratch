@@ -28,11 +28,12 @@ class BPETokenizer(Tokenizer):
         self._init_merges(params.merges)
         
     def _init_merges(self, merges: list[tuple[bytes, bytes]]):
-        self.merges_idx: list[tuple[tuple[int, int], int]] = []
-        for b1, b2 in merges:
+        # pair -> (priority, merged_idx), lower priority = earlier merge
+        self.merge_rules: dict[tuple[int, int], tuple[int, int]] = {}
+        for priority, (b1, b2) in enumerate(merges):
             idx1, idx2 = self.bytes_to_idx[b1], self.bytes_to_idx[b2]
             merge_idx = self.bytes_to_idx[b1 + b2]
-            self.merges_idx.append(((idx1, idx2), merge_idx))
+            self.merge_rules[(idx1, idx2)] = (priority, merge_idx)
 
     def _init_special_tokens(self):
         # initialize special token regex
@@ -92,8 +93,7 @@ class BPETokenizer(Tokenizer):
                     bs = pretoken.encode("utf-8")
                     bs_list = [bs[i:i+1] for i in range(len(bs))]
                     idxs = [self.bytes_to_idx[b] for b in bs_list]
-                    for pair, new_idx in self.merges_idx:
-                        idxs = self._merge(idxs, pair, new_idx)
+                    idxs = self._encode_pretoken(idxs)
                     indices.extend(idxs)
         return indices
     def decode(self, tokens: list[int]) -> str:
@@ -106,19 +106,30 @@ class BPETokenizer(Tokenizer):
             tokens = self.encode(string)
             for token in tokens:
                 yield token
-    
-    @staticmethod
-    def _merge(indices: list[int], pair: tuple[int, int], new_index: int) -> list[int]:
-        merged = []
-        i = 0
-        while i < len(indices):
-            if i + 1 < len(indices) and (indices[i], indices[i+1]) == pair:
-                merged.append(new_index)
-                i += 2
-            else:
-                merged.append(indices[i])
-                i += 1
-        return merged
+
+    def _encode_pretoken(self, idxs: list[int]) -> list[int]:
+        """Encode a pretoken using greedy BPE merging."""
+        while len(idxs) >= 2:
+            # Find the pair with lowest priority (earliest in merge list)
+            best_priority = float('inf')
+            best_pos = -1
+
+            for i in range(len(idxs) - 1):
+                pair = (idxs[i], idxs[i + 1])
+                if pair in self.merge_rules:
+                    priority, _ = self.merge_rules[pair]
+                    if priority < best_priority:
+                        best_priority = priority
+                        best_pos = i
+
+            if best_pos == -1:
+                break  # No more merges possible
+
+            # Apply the merge
+            _, new_idx = self.merge_rules[(idxs[best_pos], idxs[best_pos + 1])]
+            idxs = idxs[:best_pos] + [new_idx] + idxs[best_pos + 2:]
+
+        return idxs
 
 def get_initial_stats(pretoken_freq):
     stats = defaultdict(int)

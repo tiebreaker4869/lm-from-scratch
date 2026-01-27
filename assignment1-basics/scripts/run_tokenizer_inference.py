@@ -4,6 +4,7 @@ import numpy as np
 import os
 from multiprocessing import Pool
 from tqdm import tqdm
+from collections import deque
 
 # Global tokenizer for worker processes
 _tokenizer = None
@@ -55,7 +56,7 @@ def main():
         with open(args.input_path, 'r') as f_in, open(args.output_path, 'wb') as f_out:
             pbar = tqdm(total=file_size, desc="Tokenizing", unit="B", unit_scale=True)
 
-            pending = []  # (async_result, chunk_bytes)
+            pending = deque()  # (async_result, chunk_bytes)
             chunk = []
             chunk_bytes = 0
 
@@ -69,7 +70,7 @@ def main():
 
                     # Write completed results in order
                     while pending and pending[0][0].ready():
-                        result, cb = pending.pop(0)
+                        result, cb = pending.popleft()
                         tokens = result.get()
                         if tokens:
                             f_out.write(np.array(tokens, dtype=dtype).tobytes())
