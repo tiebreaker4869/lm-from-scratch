@@ -12,11 +12,14 @@ def _init_worker(vocab_path, merges_path, special_tokens):
     global _tokenizer
     _tokenizer = BPETokenizer.from_files(vocab_path, merges_path, special_tokens)
 
-def _encode_line(line):
-    cleaned_line = line.strip()
-    if not cleaned_line:
-        return []
-    return _tokenizer.encode(cleaned_line)
+def _encode_chunk(lines):
+    """Encode a chunk of lines, return flat list of tokens."""
+    all_tokens = []
+    for line in lines:
+        cleaned_line = line.strip()
+        if cleaned_line:
+            all_tokens.extend(_tokenizer.encode(cleaned_line))
+    return all_tokens
 
 def main():
     parser = ArgumentParser()
@@ -24,7 +27,7 @@ def main():
     parser.add_argument('--input_path', type=str, required=True)
     parser.add_argument('--output_path', type=str, required=True)
     parser.add_argument('--num_workers', type=int, default=None, help='Number of parallel workers (default: CPU count)')
-    parser.add_argument('--batch_size', type=int, default=10000, help='Lines per batch for parallel processing')
+    parser.add_argument('--chunk_size', type=int, default=1000, help='Lines per chunk for each worker')
 
     args = parser.parse_args()
 
@@ -44,6 +47,20 @@ def main():
 
     file_size = os.path.getsize(args.input_path)
 
+    def chunk_generator(file_handle, chunk_size):
+        """Yield chunks of lines from file."""
+        chunk = []
+        chunk_bytes = 0
+        for line in file_handle:
+            chunk.append(line)
+            chunk_bytes += len(line.encode('utf-8'))
+            if len(chunk) >= chunk_size:
+                yield chunk, chunk_bytes
+                chunk = []
+                chunk_bytes = 0
+        if chunk:
+            yield chunk, chunk_bytes
+
     with Pool(
         processes=num_workers,
         initializer=_init_worker,
@@ -51,30 +68,14 @@ def main():
     ) as pool:
         with open(args.input_path, 'r') as f_in, open(args.output_path, 'wb') as f_out:
             pbar = tqdm(total=file_size, desc="Tokenizing", unit="B", unit_scale=True)
-            batch = []
-            batch_bytes = 0
-            for line in f_in:
-                batch.append(line)
-                batch_bytes += len(line.encode('utf-8'))
-                if len(batch) >= args.batch_size:
-                    all_tokens = []
-                    for tokens in pool.imap(_encode_line, batch):
-                        if tokens:
-                            all_tokens.extend(tokens)
-                    if all_tokens:
-                        f_out.write(np.array(all_tokens, dtype=dtype).tobytes())
-                    pbar.update(batch_bytes)
-                    batch = []
-                    batch_bytes = 0
-            # Process remaining lines
-            if batch:
-                all_tokens = []
-                for tokens in pool.imap(_encode_line, batch):
-                    if tokens:
-                        all_tokens.extend(tokens)
-                if all_tokens:
-                    f_out.write(np.array(all_tokens, dtype=dtype).tobytes())
-                pbar.update(batch_bytes)
+            chunks_with_bytes = list(chunk_generator(f_in, args.chunk_size))
+            chunks = [c for c, _ in chunks_with_bytes]
+            bytes_list = [b for _, b in chunks_with_bytes]
+
+            for tokens, chunk_bytes in zip(pool.imap(_encode_chunk, chunks), bytes_list):
+                if tokens:
+                    f_out.write(np.array(tokens, dtype=dtype).tobytes())
+                pbar.update(chunk_bytes)
             pbar.close()
 
 if __name__ == "__main__":
