@@ -108,10 +108,11 @@ class RotaryPositionalEmbedding(nn.Module):
         # angles: (..., seq_len, d_k/2)
         angles = token_positions.unsqueeze(-1).float() * self.inv_freq
 
-        # x_even has shape (..., seq_len, d_k/2), angles has shape (..., seq_len, d_k/2)
-        # Need to insert dims at the front to match x's batch dims
+        # x_even has shape (..., seq_len, d_k/2)
+        # angles has shape (..., seq_len, d_k/2) but may have fewer leading dims
+        # Insert dims at position -3 (before seq_len dim) to match x's middle dims
         while angles.ndim < x_even.ndim:
-            angles = angles.unsqueeze(0)
+            angles = angles.unsqueeze(-3)
 
         cos = angles.cos()
         sin = angles.sin()
