@@ -98,16 +98,21 @@ class RotaryPositionalEmbedding(nn.Module):
         inv_freq = 1.0 / (theta ** (pow_series / d_k))
         return inv_freq
 
-    def forward(self, x: Float[Tensor, '... seq_len d_k'], 
+    def forward(self, x: Float[Tensor, '... seq_len d_k'],
                 token_positions: Int[Tensor, '... seq_len']) -> Float[Tensor, '... seq_len d_k']:
         x_even = x[..., 0::2]  # shape: (..., seq_len, d_k/2)
         x_odd = x[..., 1::2]   # shape: (..., seq_len, d_k/2)
-        
+
         # token_positions: (..., seq_len)
         # inv_freq: (d_k/2,)
         # angles: (..., seq_len, d_k/2)
         angles = token_positions.unsqueeze(-1).float() * self.inv_freq
-        
+
+        # x_even has shape (..., seq_len, d_k/2), angles has shape (..., seq_len, d_k/2)
+        # Need to insert dims at the front to match x's batch dims
+        while angles.ndim < x_even.ndim:
+            angles = angles.unsqueeze(0)
+
         cos = angles.cos()
         sin = angles.sin()
         
