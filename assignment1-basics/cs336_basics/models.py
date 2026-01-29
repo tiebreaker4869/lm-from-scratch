@@ -239,11 +239,49 @@ class MiniLMNoLN(nn.Module):
             out = block(out)
         out = self.final_proj(out)
         return out
+
+class TransformerBlockPostLayerNorm(nn.Module):
+    def __init__(self, d_model: int, num_heads: int, d_ff: int, theta: float | None = None, max_seq_len: int | None = None, device: torch.device | None = None, dtype: torch.dtype | None = None):
+        super(TransformerBlockPostLayerNorm, self).__init__()
+        self.rmsnorm_mha = RMSNorm(d_model, device=device, dtype=dtype)
+        self.rmsnorm_ffn = RMSNorm(d_model, device=device, dtype=dtype)
+        self.mha = MultiHeadSelfAttention(d_model, num_heads, theta, max_seq_len, device, dtype)
+        self.ffn = SwiGLU(d_model, d_ff, device, dtype)
+        self.device = device
+        self.dtype = dtype
+        self.d_model = d_model
+        self.theta = theta
+        self.max_seq_len = max_seq_len
+    def forward(self, x: Float[Tensor, 'bs ... seq_len d_model']) -> Float[Tensor, 'bs ... seq_len d_model']:
+        seq_len = x.shape[-2]
+        token_positions = torch.arange(0, seq_len, device=self.device).broadcast_to(x.shape[:-1]) if self.theta else None
+        x = x + self.mha(x, token_positions)
+        x = self.rmsnorm_mha(x)
+        x = x + self.ffn(x)
+        x = self.rmsnorm_ffn(x)
+        return x
+    
+class MiniLMPostLN(nn.Module):
+    def __init__(self, d_model: int, d_ff: int, num_heads: int, theta: float, vocab_size: int, context_length: int, num_layers: int, device: torch.device | None = None, dtype: torch.dtype | None = None):
+        super(MiniLMPostLN, self).__init__()
+        self.embeddings = Embedding(num_embeddings=vocab_size, embedding_dim=d_model, device=device, dtype=dtype)
+        self.blocks = nn.ModuleList([TransformerBlockPostLayerNorm(d_model, num_heads, d_ff, theta, max_seq_len=context_length, device=device, dtype=dtype) for _ in range(num_layers)])
+        self.final_norm = RMSNorm(d_model, device=device, dtype=dtype)
+        self.final_proj = Linear(d_model, vocab_size, device, dtype)
+        self.device = device
+    def forward(self, x: Int[Tensor, '... seq_len']) -> Float[Tensor, '... seq_len vocab_size']:
+        out = self.embeddings(x)
+        for block in self.blocks:
+            out = block(out)
+        out = self.final_norm(out)
+        out = self.final_proj(out)
+        return out
     
 def get_model(model: str):
     mappings = {
         'MiniLM': MiniLM,
-        'MiniLMNoLN': MiniLMNoLN
+        'MiniLMNoLN': MiniLMNoLN,
+        'MiniLMPostLN': MiniLMPostLN
     }
     if model not in mappings:
         raise NotImplementedError
