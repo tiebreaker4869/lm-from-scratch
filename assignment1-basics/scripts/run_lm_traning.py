@@ -1,6 +1,6 @@
 from argparse import ArgumentParser
 from cs336_basics.training_utils import cross_entropy, learning_rate_schedule, load_as_array, gradient_clipping, get_next_batch, save_checkpoint, sample_dataset, get_dtype, eval_validation
-from cs336_basics.models import MiniLM
+from cs336_basics.models import get_model
 from cs336_basics.optimizers import AdamW
 import os
 import tqdm
@@ -11,6 +11,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 def main():
     parser = ArgumentParser()
+    parser.add_argument('--model', type=str, choices=['MiniLM', 'MiniLMNoLN'], default='MiniLM')
     parser.add_argument('--d_model', type=int, default=896)
     parser.add_argument('--d_ff', type=int, default=4864)
     parser.add_argument('--num_heads', type=int, default=14)
@@ -47,8 +48,10 @@ def main():
     sampling_probs = args.datasets_sampling_probs
 
     wandb.init(entity=args.wandb_entity, project=args.wandb_project, config=vars(args))
+    
+    ModelClass = get_model(args.model)
 
-    model = MiniLM(args.d_model, args.d_ff, args.num_heads, args.theta, args.vocab_size, args.context_length, args.num_layers, args.device, get_dtype(args.dtype))
+    model = ModelClass(args.d_model, args.d_ff, args.num_heads, args.theta, args.vocab_size, args.context_length, args.num_layers, args.device, get_dtype(args.dtype))
     model.train()
     optimizer = AdamW(model.parameters(), lr=args.max_lr, betas=(args.beta1, args.beta2), weight_decay=args.weight_decay)
 
