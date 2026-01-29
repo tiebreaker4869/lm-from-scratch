@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 def main():
     parser = ArgumentParser()
-    parser.add_argument('--model', type=str, choices=['MiniLM', 'MiniLMNoLN', 'MiniLMPostLN', 'MiniLMNoPE'], default='MiniLM')
+    parser.add_argument('--model', type=str, choices=['MiniLM', 'MiniLMNoLN', 'MiniLMPostLN', 'MiniLMNoPE', 'MiniLMSiLUFFN'], default='MiniLM')
     parser.add_argument('--d_model', type=int, default=896)
     parser.add_argument('--d_ff', type=int, default=4864)
     parser.add_argument('--num_heads', type=int, default=14)
