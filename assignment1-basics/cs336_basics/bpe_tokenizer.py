@@ -8,6 +8,7 @@ from multiprocessing import Pool
 from cs336_basics.common import gpt2_bytes_to_unicode
 import os
 from functools import partial
+from tqdm import tqdm
 
 @dataclass(frozen=True)
 class BPETokenizerParams:
@@ -205,12 +206,15 @@ def train_bpe(input_path: str, vocab_size: int, special_tokens: list[str] | None
     # pair_to_words: (pair) -> set(word_tuples)
     stats, pair_to_words = get_initial_stats(pretoken_freq)
 
+    num_merges = vocab_size - len(vocab)
+    pbar = tqdm(total=num_merges, desc="Training BPE")
+
     while len(vocab) < vocab_size:
         if not stats:
             break
-            
+
         best_pair = max(stats.items(), key=lambda x: (x[1], x[0]), default=(None, 0))[0]
-        
+
         if not best_pair or stats[best_pair] <= 0:
             break
 
@@ -218,12 +222,12 @@ def train_bpe(input_path: str, vocab_size: int, special_tokens: list[str] | None
         new_token = p1 + p2
         merges.append(best_pair)
         vocab[nxt_idx] = new_token
-        
+
         words_to_update = list(pair_to_words[best_pair])
-        
+
         for word in words_to_update:
             count = pretoken_freq[word]
-            
+
             for i in range(len(word) - 1):
                 old_p = (word[i], word[i+1])
                 stats[old_p] -= count
@@ -241,17 +245,19 @@ def train_bpe(input_path: str, vocab_size: int, special_tokens: list[str] | None
                     new_word.append(word[i])
                     i += 1
             new_word = tuple(new_word)
-            
+
             del pretoken_freq[word]
             pretoken_freq[new_word] += count
-            
+
             for i in range(len(new_word) - 1):
                 new_p = (new_word[i], new_word[i+1])
                 stats[new_p] += count
                 pair_to_words[new_p].add(new_word)
 
         nxt_idx += 1
+        pbar.update(1)
         if best_pair in pair_to_words:
             del pair_to_words[best_pair]
-        
+
+    pbar.close()
     return vocab, merges
