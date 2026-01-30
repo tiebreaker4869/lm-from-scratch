@@ -150,18 +150,19 @@ def stream_chunks(input_path, max_chunk_size=7 * 1024 * 1024):
         current_batch_size = 0
         for line in f:
             current_batch.append(line)
-            current_batch_size += len(line)
+            current_batch_size += len(line.encode("utf-8"))
             if current_batch_size >= max_chunk_size:
-                yield current_batch
+                yield current_batch, current_batch_size
                 current_batch = []
                 current_batch_size = 0
         if current_batch:
-            yield current_batch
+            yield current_batch, current_batch_size
 
-def process_chunks(lines: list[str], special_tokens_set, special_tokens_regex) -> defaultdict[tuple[bytes, ...], int]:
+def process_chunks(args, special_tokens_set, special_tokens_regex) -> tuple[int, defaultdict[tuple[bytes, ...], int]]:
+    lines, chunk_bytes = args
     pretoken_freq = defaultdict(int)
     text = "".join(lines)
-    
+
     if special_tokens_regex:
         chunks = re.split(special_tokens_regex, text)
         chunks = [c for c in chunks if c and c not in special_tokens_set]
@@ -173,7 +174,7 @@ def process_chunks(lines: list[str], special_tokens_set, special_tokens_regex) -
             bs = pretoken.encode("utf-8")
             token_tuple = tuple(bs[i:i+1] for i in range(len(bs)))
             pretoken_freq[token_tuple] += 1
-    return pretoken_freq
+    return chunk_bytes, pretoken_freq
 
 def train_bpe(input_path: str, vocab_size: int, special_tokens: list[str] | None = None) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
     special_tokens = special_tokens or []
@@ -192,15 +193,19 @@ def train_bpe(input_path: str, vocab_size: int, special_tokens: list[str] | None
     pretoken_freq = defaultdict(int)
 
     special_tokens_set = set(special_tokens)
-    
+
     num_procs = os.cpu_count()
+    file_size = os.path.getsize(input_path)
 
     worker_func = partial(process_chunks, special_tokens_set=special_tokens_set, special_tokens_regex=special_tokens_regex)
-    
+
     with Pool(processes=num_procs) as pool:
-        for result in pool.imap_unordered(worker_func, stream_chunks(input_path)):
+        pbar = tqdm(total=file_size, desc="Pretokenizing", unit="B", unit_scale=True)
+        for chunk_bytes, result in pool.imap_unordered(worker_func, stream_chunks(input_path)):
             for k, v in result.items():
-                pretoken_freq[k] += v        
+                pretoken_freq[k] += v
+            pbar.update(chunk_bytes)
+        pbar.close()        
 
     # stats: (pair) -> total_count
     # pair_to_words: (pair) -> set(word_tuples)
