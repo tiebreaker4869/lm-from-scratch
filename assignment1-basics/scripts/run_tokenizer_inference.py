@@ -60,6 +60,8 @@ def main():
             chunk = []
             chunk_bytes = 0
 
+            max_pending = num_workers * 2  # Limit pending queue to control memory
+
             for line in f_in:
                 chunk.append(line)
                 chunk_bytes += len(line.encode('utf-8'))
@@ -72,6 +74,15 @@ def main():
                     while pending and pending[0][0].ready():
                         result, cb = pending.popleft()
                         tokens = result.get()
+                        if tokens:
+                            f_out.write(np.array(tokens, dtype=dtype).tobytes())
+                        pbar.update(cb)
+
+                    # Block if too many pending tasks to limit memory usage
+                    while len(pending) >= max_pending:
+                        result, cb = pending[0]
+                        tokens = result.get()  # Blocks until ready
+                        pending.popleft()
                         if tokens:
                             f_out.write(np.array(tokens, dtype=dtype).tobytes())
                         pbar.update(cb)
