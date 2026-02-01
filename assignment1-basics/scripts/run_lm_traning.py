@@ -52,6 +52,8 @@ def main():
     ModelClass = get_model(args.model)
 
     model = ModelClass(args.d_model, args.d_ff, args.num_heads, args.theta, args.vocab_size, args.context_length, args.num_layers, args.device, get_dtype(args.dtype))
+    num_params = sum(p.numel() for p in model.parameters())
+    logging.info(f"Model {args.model} has {num_params:,} parameters ({num_params / 1e6:.2f}M)")
     model.train()
     optimizer = AdamW(model.parameters(), lr=args.max_lr, betas=(args.beta1, args.beta2), weight_decay=args.weight_decay)
 
